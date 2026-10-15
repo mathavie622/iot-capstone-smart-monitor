@@ -1,0 +1,200 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Distance IoT Dashboard</title>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: Arial, sans-serif;
+      background: #eef2ff;
+      color: #172033;
+    }
+
+    main {
+      max-width: 850px;
+      margin: auto;
+    }
+
+    header {
+      background: #243b80;
+      color: white;
+      padding: 24px;
+      border-radius: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: white;
+      padding: 22px;
+      border-radius: 14px;
+      box-shadow: 0 3px 12px #00000010;
+    }
+
+    .value {
+      font-size: 30px;
+      font-weight: bold;
+      overflow-wrap: anywhere;
+    }
+
+    #status {
+      font-weight: bold;
+    }
+
+    li {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    footer {
+      margin-top: 20px;
+      color: #475569;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+<main>
+  <header>
+    <h1>Smart Distance Monitoring</h1>
+    <p>ESP32 + HC-SR04 + MQTT</p>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>MQTT Status</h2>
+      <p id="status">Connecting...</p>
+    </section>
+
+    <section class="card">
+      <h2>Latest Distance</h2>
+      <div class="value"><span id="distance">--</span> cm</div>
+    </section>
+
+    <section class="card">
+      <h2>Reading ID</h2>
+      <div class="value" id="readingId">--</div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Latest Update</h2>
+    <p id="updated">Waiting for sensor data...</p>
+    <p>Device uptime: <span id="uptime">--</span></p>
+  </section>
+
+  <section class="card">
+    <h2>Recent Readings</h2>
+    <ul id="history">
+      <li>Waiting for readings...</li>
+    </ul>
+  </section>
+
+  <footer>
+    Educational prototype. Public MQTT test broker is used.
+    Do not publish private information.
+  </footer>
+</main>
+
+<script>
+  const TOPIC = "mathavi622/capstone/distance";
+
+  const statusEl = document.getElementById("status");
+  const distanceEl = document.getElementById("distance");
+  const readingIdEl = document.getElementById("readingId");
+  const updatedEl = document.getElementById("updated");
+  const uptimeEl = document.getElementById("uptime");
+  const historyEl = document.getElementById("history");
+
+  const client = mqtt.connect(
+    "wss://broker.hivemq.com:8884/mqtt",
+    {
+      clientId: "MathaviDashboard_" +
+        Math.random().toString(16).slice(2),
+      reconnectPeriod: 3000,
+      connectTimeout: 10000
+    }
+  );
+
+  client.on("connect", function () {
+    statusEl.textContent = "Connected — waiting for data";
+
+    client.subscribe(TOPIC, function (error) {
+      if (error) {
+        statusEl.textContent = "Subscription failed";
+      }
+    });
+  });
+
+  client.on("reconnect", function () {
+    statusEl.textContent = "Reconnecting...";
+  });
+
+  client.on("offline", function () {
+    statusEl.textContent = "Offline";
+  });
+
+  client.on("error", function (error) {
+    statusEl.textContent = "Connection error";
+    console.error(error);
+  });
+
+  client.on("message", function (topic, message) {
+    try {
+      const data = JSON.parse(message.toString());
+
+      if (typeof data.distance_cm !== "number") {
+        return;
+      }
+
+      distanceEl.textContent = data.distance_cm.toFixed(2);
+      readingIdEl.textContent = data.id ?? "--";
+
+      uptimeEl.textContent =
+        data.uptime_ms != null
+          ? Math.round(data.uptime_ms / 1000) + " seconds"
+          : "--";
+
+      updatedEl.textContent =
+        "Received at " + new Date().toLocaleTimeString();
+
+      if (historyEl.textContent.includes("Waiting for readings")) {
+        historyEl.innerHTML = "";
+      }
+
+      const item = document.createElement("li");
+      item.textContent =
+        "ID " + data.id + " — " +
+        data.distance_cm.toFixed(2) + " cm";
+
+      historyEl.prepend(item);
+
+      while (historyEl.children.length > 10) {
+        historyEl.lastElementChild.remove();
+      }
+
+      statusEl.textContent = "Connected — receiving data";
+    } catch (error) {
+      console.error("Invalid sensor message", error);
+    }
+  });
+</script>
+</body>
+</html>
